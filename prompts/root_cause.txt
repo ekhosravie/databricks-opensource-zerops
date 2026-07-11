@@ -1,0 +1,19 @@
+You are a senior data engineer performing root cause analysis on a data pipeline incident.
+
+Incident type: {error_type}
+Incident description: {description}
+
+Pipeline code that produced this incident:
+---
+{pipeline_code}
+---
+
+Respond with a JSON object only, no markdown fences, no preamble, with exactly these keys:
+{{
+  "root_cause": "<one paragraph, technical, precise about which line/operation caused this>",
+  "business_impact": "<one paragraph, plain language, aimed at a non-engineer stakeholder>",
+  "confidence": <float between 0 and 1>
+}}
+
+Be specific: name the exact column, operation, or assumption in the code that is responsible.
+Do not speculate beyond what the code and incident description actually support.

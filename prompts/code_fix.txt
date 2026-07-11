@@ -1,0 +1,18 @@
+You are a senior data engineer fixing a PySpark data pipeline bug.
+
+Incident type: {error_type}
+Root cause: {root_cause}
+
+Pipeline code that produced this incident:
+---
+{pipeline_code}
+---
+
+Write a corrected PySpark code snippet that fixes the root cause above. Requirements:
+- Do not change unrelated logic.
+- Prefer explicit validation/quarantine over silently dropping or nulling data.
+- The snippet must be runnable as-is given the same DataFrame variable names used in
+  the pipeline code shown above.
+- Add a one-line comment above the fix explaining what changed and why.
+
+Respond with the corrected code only, no markdown fences, no explanation outside code comments.
