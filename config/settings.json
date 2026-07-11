@@ -1,0 +1,49 @@
+{
+  "catalog": "zeroops",
+  "schemas": {
+    "bronze": "bronze",
+    "silver": "silver",
+    "gold": "gold",
+    "ops": "ops",
+    "sandbox": "sandbox"
+  },
+  "tables": {
+    "bronze": "zeroops.bronze.sales",
+    "silver": "zeroops.silver.sales",
+    "silver_quarantine": "zeroops.silver.sales_quarantine",
+    "silver_unmapped_columns": "zeroops.silver.unmapped_columns",
+    "gold_daily": "zeroops.gold.daily_sales",
+    "gold_monthly": "zeroops.gold.monthly_revenue",
+    "run_history": "zeroops.ops.run_history",
+    "incident_log": "zeroops.ops.incident_log",
+    "ai_analysis": "zeroops.ops.ai_analysis",
+    "ai_fix": "zeroops.ops.ai_fix",
+    "validation_results": "zeroops.ops.validation_results",
+    "github_pr_history": "zeroops.ops.github_pr_history",
+    "notifications": "zeroops.ops.notifications",
+    "guardrail_log": "zeroops.ops.guardrail_log"
+  },
+  "sandbox_schema": "zeroops.sandbox",
+  "volumes": {
+    "bronze": "landing",
+    "ops": "artifacts"
+  },
+  "paths": {
+    "data": "/Volumes/zeroops/bronze/landing",
+    "repo_sim": "/Volumes/zeroops/ops/artifacts/repo_sim/pipeline-repo",
+    "generated_fixes": "/Volumes/zeroops/ops/artifacts/generated_fixes",
+    "prompts": "/Volumes/zeroops/ops/artifacts/prompts",
+    "pr_artifacts": "/Volumes/zeroops/ops/artifacts/pr_artifacts"
+  },
+  "expected_bronze_schema": [
+    "order_id", "order_date", "store_id", "product_id",
+    "product_name", "quantity", "unit_price", "customer_id"
+  ],
+  "thresholds": {
+    "row_count_change_pct": 0.30,
+    "null_pct": 0.03,
+    "duplicate_pct": 0.02
+  },
+  "note": "This file documents the same values notebooks/00_setup_environment.py defines inline. It's kept as a reference/config-as-documentation artifact and to make the config-driven-design intent explicit for reviewers; the notebooks do not read this file directly so they work standalone in a fresh workspace. File storage uses Unity Catalog Volumes (not DBFS) so it works on workspaces that restrict direct dbfs:/ root access."
+}
+
