@@ -54,15 +54,18 @@ lifecycle = (
         "incident_id", "left",
     )
     .join(
-        validation.select("incident_id", "status", "validation_narrative")
-        .withColumnRenamed("status", "validation_status").alias("v"),
+        validation.select(
+            "incident_id", "status", "validation_narrative",
+            "semantic_similarity", "requires_semantic_review",
+        ).withColumnRenamed("status", "validation_status").alias("v"),
         "incident_id", "left",
     )
     .select(
         "i.incident_id", "i.detected_at", "i.error_type", "i.description",
         "a.root_cause", "a.confidence", "a.requires_human_review", "a.generated_by",
         "f.fix_summary", "f.guardrail_status",
-        "v.validation_status", "v.validation_narrative", "i.status",
+        "v.validation_status", "v.validation_narrative",
+        "v.semantic_similarity", "v.requires_semantic_review", "i.status",
     )
     .orderBy(F.col("i.detected_at").desc())
 )
