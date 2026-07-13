@@ -124,11 +124,20 @@ CONFIG = {
         # Real OpenAI, opt-in only: needs actual outbound internet + a paid API key stored
         # in a secret scope (secret scopes require a non-Free-Edition workspace).
         "openai_model": "gpt-4o-mini",
+        # Embedding model for semantic-drift detection (07). Free, Databricks-hosted,
+        # same no-internet-needed mechanism as the chat models above.
+        "embedding_model": "bge-large-en",
     },
     "policies": {
         # Below this confidence, a fix can still be generated and validated, but the PR
         # is flagged NEEDS_HUMAN_REVIEW instead of routed for normal review.
         "min_confidence_for_auto_pr": 0.70,
+        # Below this cosine similarity between the fix's business logic and the
+        # baseline's, the fix is flagged as a semantic change (not just a mechanical
+        # one) and forced into human review regardless of confidence or validation
+        # status. Mechanical checks (row counts, nulls, schema) can't catch a fix that
+        # quietly redefines what a metric means -- this is the check that's meant to.
+        "min_semantic_similarity": 0.85,
         # Any table an AI-generated fix writes to must live under this catalog. Enforced
         # by scanning the generated code text, independent of what apply_fix() actually
         # runs (defense in depth: the vetted function is already scoped, this catches the
@@ -293,6 +302,55 @@ def query_llm(prompt: str, backend: str, system: str = None) -> str:
         return query_openai_llm(prompt, system=system)
     else:
         raise ValueError(f"query_llm() does not handle backend='{backend}'")
+
+
+def query_databricks_embedding(text: str, model: str = None) -> list:
+    """Get an embedding vector from a Databricks-hosted embedding model (e.g.
+    bge-large-en), same free/no-internet mechanism as query_databricks_llm(): this
+    workspace's own /serving-endpoints/ url, authenticated with the notebook's own
+    token. Used for semantic-drift detection in notebook 07 -- comparing the MEANING
+    of a fix's business logic against the baseline's, not just its data-quality
+    metrics."""
+    import requests
+    model = model or CONFIG["llm"]["embedding_model"]
+    url = f"{get_workspace_url()}/serving-endpoints/{model}/invocations"
+    token = get_notebook_token()
+    resp = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"input": [text]},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["data"][0]["embedding"]
+
+
+def cosine_similarity(vec_a: list, vec_b: list) -> float:
+    dot = sum(a*b for a, b in zip(vec_a, vec_b))
+    norm_a = sum(a*a for a in vec_a) ** 0.5
+    norm_b = sum(b*b for b in vec_b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def check_semantic_drift(baseline_text: str, fixed_text: str) -> dict:
+    """Embeds the baseline business logic and the fix's business logic, and compares
+    them with cosine similarity. Below CONFIG['policies']['min_semantic_similarity'],
+    the fix is flagged as a semantic change -- e.g. a fix that silently redefines how
+    a metric is computed, which mechanical row-count/null/duplicate checks can't see
+    at all. If the embedding call itself fails (quota, network), this fails safe:
+    treats the fix as drifted so it gets human eyes rather than silently skipping
+    the check."""
+    try:
+        emb_a = query_databricks_embedding(baseline_text)
+        emb_b = query_databricks_embedding(fixed_text)
+        similarity = cosine_similarity(emb_a, emb_b)
+        drifted = similarity < CONFIG["policies"]["min_semantic_similarity"]
+        return {"similarity": round(similarity, 4), "drifted": drifted, "error": None}
+    except Exception as e:
+        log(f"WARNING: semantic drift check failed ({e}); failing safe as drifted=True.")
+        return {"similarity": None, "drifted": True, "error": str(e)}
 
 
 def strip_code_fences(text: str) -> str:
