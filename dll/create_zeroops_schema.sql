@@ -234,10 +234,12 @@ CREATE TABLE IF NOT EXISTS zeroops.ops.validation_results (
     validation_table          STRING,   -- points into the sandbox schema, e.g.
                                          -- zeroops.sandbox.sales_validation_<id>
     validation_narrative       STRING,
-    status                     STRING,  -- VALIDATION_PASSED | VALIDATION_FAILED
-    validated_at                TIMESTAMP
+    semantic_similarity         DOUBLE,  -- cosine similarity vs CANONICAL_METRIC_CONTRACT (07)
+    requires_semantic_review     BOOLEAN, -- True if similarity fell below policy threshold
+    status                        STRING,  -- VALIDATION_PASSED | VALIDATION_FAILED (mechanical only)
+    validated_at                   TIMESTAMP
 ) USING DELTA
-COMMENT 'Before/after sandbox comparison results for each generated fix';
+COMMENT 'Before/after sandbox comparison results for each generated fix, plus semantic-drift check';
 
 CREATE TABLE IF NOT EXISTS zeroops.ops.github_pr_history (
     incident_id              STRING,
@@ -246,8 +248,9 @@ CREATE TABLE IF NOT EXISTS zeroops.ops.github_pr_history (
     fix_filename                STRING,
     pr_description_path          STRING,
     requires_human_review          BOOLEAN,
-    status                          STRING,   -- SIMULATED_PR_READY
-    created_at                      TIMESTAMP
+    requires_semantic_review        BOOLEAN,
+    status                            STRING,   -- SIMULATED_PR_READY
+    created_at                        TIMESTAMP
 ) USING DELTA
 COMMENT 'Local git branch/commit/diff record for each proposed fix';
 
@@ -261,9 +264,9 @@ COMMENT 'Simulated Slack/Teams alert history';
 
 CREATE TABLE IF NOT EXISTS zeroops.ops.guardrail_log (
     policy       STRING,   -- confidence_gate | dangerous_code_pattern | table_scope |
-                            -- human_approval_required
+                            -- semantic_drift_check | human_approval_required
     subject_id   STRING,   -- usually an incident_id
-    stage        STRING,   -- root_cause_analysis | fix_generation | pr_creation
+    stage        STRING,   -- root_cause_analysis | fix_generation | sandbox_validation | pr_creation
     decision     STRING,   -- ALLOW | BLOCK
     reason       STRING,
     logged_at    TIMESTAMP
