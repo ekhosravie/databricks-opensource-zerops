@@ -23,6 +23,18 @@
 # MAGIC Each incident's validation clone is written to its own table under the `sandbox`
 # MAGIC schema (e.g. `zeroops.sandbox.sales_validation_<incident_short_id>`), keeping
 # MAGIC these throwaway experiments completely separate from the real `silver` schema.
+# MAGIC
+# MAGIC ### Mechanical validation vs. semantic drift
+# MAGIC The metric checks above (row count, null %, duplicate %) catch **mechanical**
+# MAGIC breakage — but they can't catch a fix that's mechanically clean and still
+# MAGIC silently changes what a number *means* (e.g. quietly narrowing which rows count
+# MAGIC toward revenue). To catch that class of problem, this notebook also embeds the
+# MAGIC fix's code against a plain-English description of the metric's intended
+# MAGIC contract (`CANONICAL_METRIC_CONTRACT` below) using a free Databricks-hosted
+# MAGIC embedding model, and flags a low cosine similarity as `requires_semantic_review`.
+# MAGIC This is a heuristic, not a proof of correctness — but it's a real, automated
+# MAGIC check for exactly the gap that mechanical validation can't see, and it fails
+# MAGIC safe (flags for review) if the embedding call itself errors.
 
 # COMMAND ----------
 
@@ -34,6 +46,20 @@ dbutils.widgets.dropdown("llm_backend", "databricks_llm",
                           ["databricks_llm", "openai", "rule_engine"], "AI backend")
 LLM_BACKEND = dbutils.widgets.get("llm_backend")
 log(f"Using AI backend for validation narrative: {LLM_BACKEND}")
+
+# COMMAND ----------
+
+# The intended, human-approved meaning of the metrics this pipeline produces. A fix
+# whose embedding drifts far from this description is flagged for semantic review,
+# regardless of how clean it looks mechanically. Update this any time the actual
+# business definition of these metrics legitimately changes.
+CANONICAL_METRIC_CONTRACT = (
+    "Revenue is computed as quantity multiplied by unit_price, summed per region "
+    "per day in gold.daily_sales and per region per month in gold.monthly_revenue. "
+    "Every row with a validly parsed positive integer quantity counts toward these "
+    "totals. unit_price is taken as-is from Bronze. No row is excluded from revenue "
+    "based on customer_id, discount_code, or any column other than quantity validity."
+)
 
 # COMMAND ----------
 
@@ -142,6 +168,24 @@ for row in pending_fixes:
         d["error_type"], before_metrics, after_metrics, status, LLM_BACKEND
     )
 
+    # Semantic drift check: does this fix's code still mean what the metric contract
+    # says it should mean? This is independent of the mechanical pass/fail above --
+    # a fix can pass every mechanical check and still fail this one, and vice versa.
+    if LLM_BACKEND == "rule_engine":
+        # No embedding call in rule-engine mode -- nothing to compare semantically
+        # against, so this is skipped rather than guessed at.
+        semantic = {"similarity": None, "drifted": False, "error": "skipped (rule_engine backend)"}
+    else:
+        semantic = check_semantic_drift(CANONICAL_METRIC_CONTRACT, d["generated_code"])
+
+    log_guardrail_decision(
+        "semantic_drift_check", d["incident_id"], "sandbox_validation",
+        "BLOCK" if semantic["drifted"] else "ALLOW",
+        f"similarity={semantic['similarity']}, "
+        f"threshold={CONFIG['policies']['min_semantic_similarity']}"
+        + (f", error={semantic['error']}" if semantic.get("error") else ""),
+    )
+
     results.append({
         "incident_id": d["incident_id"],
         "error_type": d["error_type"],
@@ -149,10 +193,14 @@ for row in pending_fixes:
         "after_metrics_json": json.dumps(after_metrics),
         "validation_table": validation_name,
         "validation_narrative": narrative,
+        "semantic_similarity": semantic["similarity"],
+        "requires_semantic_review": semantic["drifted"],
         "status": status,
         "validated_at": datetime.datetime.utcnow(),
     })
-    log(f"[{d['error_type']}] before={before_metrics} after={after_metrics} -> {status}")
+    log(f"[{d['error_type']}] before={before_metrics} after={after_metrics} -> {status} "
+        f"(semantic_similarity={semantic['similarity']}, "
+        f"requires_semantic_review={semantic['drifted']})")
 
 # COMMAND ----------
 
