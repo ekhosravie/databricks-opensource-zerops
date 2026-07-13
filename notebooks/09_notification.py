@@ -42,13 +42,15 @@ def format_message(row: dict) -> str:
     confidence_str = f"{confidence:.0%}" if confidence is not None else "n/a"
     status = row.get("status") or "AWAITING_ANALYSIS"
     review_flag = "\n⚠️ REQUIRES HUMAN REVIEW (low AI confidence)" if row.get("requires_human_review") else ""
+    semantic_flag = "\n🧭 REQUIRES SEMANTIC REVIEW (metric definition may have drifted)" if row.get("requires_semantic_review") else ""
     return (
         f"🚨 *ZeroOps Alert* — {row['error_type']}\n"
         f"Pipeline: {row['pipeline_name']} (batch `{row['source_file']}`)\n"
         f"Description: {row['description']}\n"
         f"AI confidence: {confidence_str}\n"
         f"Validation status: {status}"
-        f"{review_flag}\n"
+        f"{review_flag}"
+        f"{semantic_flag}\n"
         f"Incident ID: {row['incident_id']}"
     )
 
